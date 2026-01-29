@@ -1,5 +1,6 @@
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::*;
 
+#[account]
 pub struct Proposal{
     pub id: u64,
     pub creator: Pubkey,

@@ -1,5 +1,6 @@
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::*;
 
+#[account]
 pub struct Market{
     pub proposal: Pubkey,
     pub yes_pool: u64,
