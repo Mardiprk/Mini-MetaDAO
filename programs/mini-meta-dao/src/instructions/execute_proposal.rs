@@ -1,88 +1,59 @@
-use anchor_lang::prelude::*;
-use crate::state::{Proposal, Dao};
-use crate::errors::MiniMetaDaoError;
-use crate::constants::*;
-
-#[event]
-pub struct ProposalExecuted {
-    pub proposal: Pubkey,
-    pub recipient: Pubkey,
-    pub amount: u64,
-}
-
-#[derive(Accounts)]
-pub struct ExecuteProposal<'info> {
-    #[account(mut)]
-    pub dao: Account<'info, Dao>,
-
-    #[account(mut)]
-    pub proposal: Account<'info, Proposal>,
-
-    /// CHECK: DAO treasury PDA
-    #[account(
-        mut,
-        seeds = [TREASURY_SEED],
-        bump
-    )]
-    pub treasury: UncheckedAccount<'info>,
-
-    /// Recipient of funds (for MVP, passed in)
-    /// CHECK: validated by proposal logic
-    #[account(mut)]
-    pub recipient: UncheckedAccount<'info>,
-
-    #[account(mut)]
-    pub admin: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
 pub fn execute_proposal(
     ctx: Context<ExecuteProposal>,
-    amount: u64, // lamports to transfer
+    sol_amount: u64,    // lamports
+    token_amount: u64,  // SPL token amount
 ) -> Result<()> {
     let dao = &ctx.accounts.dao;
     let proposal = &mut ctx.accounts.proposal;
 
-    // --- Authorization ---
+    // ---------------- AUTH ----------------
     require!(
         ctx.accounts.admin.key() == dao.admin,
         MiniMetaDaoError::Unauthorized
     );
 
-    // --- State checks ---
     require!(
         !proposal.executed,
         MiniMetaDaoError::ProposalAlreadyExecuted
     );
 
-    // --- Transfer SOL from treasury PDA ---
-    let seeds = &[TREASURY_SEED, &[ctx.bumps.treasury]];
+    // ---------------- SOL TRANSFER (CPI #1) ----------------
+    let treasury_bump = *ctx.bumps.get("treasury").unwrap();
+    let treasury_seeds: &[&[u8]] = &[TREASURY_SEED, &[treasury_bump]];
 
-    let ix = anchor_lang::solana_program::system_instruction::transfer(
+    let sol_ix = anchor_lang::solana_program::system_instruction::transfer(
         &ctx.accounts.treasury.key(),
-        &ctx.accounts.recipient.key(),
-        amount,
+        &ctx.accounts.admin.key(),
+        sol_amount,
     );
 
     anchor_lang::solana_program::program::invoke_signed(
-        &ix,
+        &sol_ix,
         &[
             ctx.accounts.treasury.to_account_info(),
-            ctx.accounts.recipient.to_account_info(),
+            ctx.accounts.admin.to_account_info(),
             ctx.accounts.system_program.to_account_info(),
         ],
-        &[seeds],
+        &[treasury_seeds],
     )?;
 
-    // --- Mark proposal executed ---
-    proposal.executed = true;
+    // ---------------- SPL TOKEN TRANSFER (CPI #2) ----------------
+    let cpi_accounts = Transfer {
+        from: ctx.accounts.treasury_token_account.to_account_info(),
+        to: ctx.accounts.recipient_token_account.to_account_info(),
+        authority: ctx.accounts.treasury.to_account_info(),
+    };
 
-    emit!(ProposalExecuted {
-        proposal: proposal.key(),
-        recipient: ctx.accounts.recipient.key(),
-        amount,
-    });
+    let cpi_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        cpi_accounts,
+        &[treasury_seeds],
+    );
+
+    token::transfer(cpi_ctx, token_amount)?;
+
+    // ---------------- FINALIZE ----------------
+    proposal.executed = true;
 
     Ok(())
 }
