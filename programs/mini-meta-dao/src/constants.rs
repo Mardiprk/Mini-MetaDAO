@@ -1,5 +1,3 @@
-use anchor_lang::prelude::*;
-
 // PDA Seeds
 pub const DAO_SEED: &[u8] = b"dao";
 pub const TREASURY_SEED: &[u8] = b"treasury";

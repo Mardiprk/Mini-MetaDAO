@@ -22,4 +22,6 @@ pub enum MiniMetaDaoError {
     ProposalAlreadyExecuted,
     #[msg("Invalid outcome")]
     InvalidOutcome,
+    #[msg("Math Overflow")]
+    Overflow,
 }
