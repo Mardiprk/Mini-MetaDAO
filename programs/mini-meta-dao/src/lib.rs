@@ -2,9 +2,9 @@ use anchor_lang::prelude::*;
 
 pub mod constants;
 pub mod errors;
-pub mod utils;
 pub mod state;
 pub mod instructions;
+pub mod utils;
 
 pub use instructions::*;
 
@@ -14,11 +14,50 @@ declare_id!("BvRfHqJ1cMg8EFcKj7A3qNxJhbmD8okDzF8LQintszR9");
 pub mod mini_meta_dao {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
+    pub fn init_dao(ctx: Context<InitDao>) -> Result<()> {
+        instructions::init_dao(ctx)
+    }
+
+    pub fn create_proposal(
+        ctx: Context<CreateProposal>,
+        description: String,
+    ) -> Result<()> {
+        instructions::create_proposal(ctx, description)
+    }
+
+    pub fn open_market(
+        ctx: Context<OpenMarket>,
+        duration: i64,
+    ) -> Result<()> {
+        instructions::open_market(ctx, duration)
+    }
+
+    pub fn buy_yes(
+        ctx: Context<BuyYes>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::buy_yes(ctx, amount)
+    }
+
+    pub fn buy_no(
+        ctx: Context<BuyNo>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::buy_no(ctx, amount)
+    }
+
+    pub fn resolve_market(
+        ctx: Context<ResolveMarket>,
+        outcome_yes: bool,
+    ) -> Result<()> {
+        instructions::resolve_market(ctx, outcome_yes)
+    }
+
+    pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
+        instructions::redeem(ctx)
+    }
+
+    pub fn execute_proposal(ctx: Context<ExecuteProposal>, amount: u64) -> Result<()> {
+        instructions::execute_proposal(ctx, amount)
     }
 }
-
-#[derive(Accounts)]
-pub struct Initialize {}
