@@ -1,59 +1,42 @@
-'use client';
-
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useState } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { useEffect, useState, useMemo } from 'react';
+import { useConnection, useAnchorWallet } from '@solana/wallet-adapter-react';
 import { getProgram } from '@/lib/anchor';
 import { getPositionPDA } from '@/lib/pdas';
-import { Position } from '@/lib/types';
+import { PublicKey } from '@solana/web3.js';
 
-export function usePosition(marketPubkey: PublicKey | null) {
+export function usePosition(marketPda?: PublicKey) {
     const { connection } = useConnection();
-    const wallet = useWallet();
-    const [position, setPosition] = useState<Position | null>(null);
+    const wallet = useAnchorWallet();
+    const [position, setPosition] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+
+    const program = useMemo(() => {
+        if (!wallet) return null;
+        return getProgram(connection, wallet);
+    }, [connection, wallet]);
+
+    const fetchPosition = async () => {
+        if (!program || !wallet || !marketPda) {
+            setLoading(false);
+            setPosition(null);
+            return;
+        }
+        setLoading(true);
+        try {
+            const [positionPda] = getPositionPDA(marketPda, wallet.publicKey);
+            const positionAccount = await (program.account as any).position.fetch(positionPda);
+            setPosition(positionAccount);
+        } catch (err) {
+            // "Account does not exist" is fine here, means no position
+            setPosition(null);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        async function fetchPosition() {
-            try {
-                setLoading(true);
-                setError(null);
-
-                if (!wallet.publicKey || !marketPubkey) {
-                    setPosition(null);
-                    setLoading(false);
-                    return;
-                }
-
-                const program = getProgram(connection, wallet as any);
-                const [positionPDA] = getPositionPDA(marketPubkey, wallet.publicKey);
-
-                try {
-                    const positionAccount = await (program.account as any).position.fetch(positionPDA);
-
-                    setPosition({
-                        bettor: positionAccount.bettor,
-                        market: positionAccount.market,
-                        amount: Number(positionAccount.amount),
-                        isYes: positionAccount.isYes,
-                        redeemed: positionAccount.redeemed,
-                    });
-                } catch (err) {
-                    // Position doesn't exist yet - this is normal
-                    setPosition(null);
-                }
-            } catch (err: any) {
-                console.error('Error fetching position:', err);
-                setError(err.message || 'Failed to fetch position');
-                setPosition(null);
-            } finally {
-                setLoading(false);
-            }
-        }
-
         fetchPosition();
-    }, [connection, wallet.publicKey, marketPubkey?.toString()]);
+    }, [program, wallet?.publicKey.toBase58(), marketPda?.toBase58()]);
 
-    return { position, loading, error };
+    return { position, loading, refresh: fetchPosition };
 }

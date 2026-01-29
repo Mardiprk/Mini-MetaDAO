@@ -1,366 +1,320 @@
 'use client';
 
-import { use, useState } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { useParams, useRouter } from 'next/navigation';
+import { useDao } from '@/hooks/useDao';
+import { useMarket } from '@/hooks/useMarket';
+import { usePosition } from '@/hooks/usePosition';
+import { useTx } from '@/hooks/useTx';
+import PriceBar from '@/components/PriceBar';
+import BuyPanel from '@/components/BuyPanel';
+import { useEffect, useState, useMemo } from 'react';
+import { getProposalPDA, getMarketPDA, getDaoPDA, getTreasuryPDA, getPositionPDA } from '@/lib/pdas';
+import { ArrowLeft, Clock, Shield, CheckCircle2, TrendingUp, Info, Loader2, Landmark, Target } from 'lucide-react';
 import Link from 'next/link';
-import { useDao } from "@/src/hooks/useDao";
-import { useMarket } from "@/src/hooks/useMarket";
-import { usePosition } from "@/src/hooks/usePosition";
-import { getProgram } from '@/lib/anchor';
-import { getProposalPDA, getMarketPDA, getTreasuryPDA, getPositionPDA } from '@/lib/pdas';
-import BuyPanel from "@/src/components/BuyPanel";
-import PriceBar from "@/src/components/PriceBar";
-import StatsGrid from "@/src/components/StatsGrid";
+import { BN } from '@coral-xyz/anchor';
+import { useWallet } from '@solana/wallet-adapter-react';
 
-export default function ProposalPage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = use(params);
-    const { connection } = useConnection();
-    const wallet = useWallet();
-    const { dao } = useDao();
+export default function ProposalDetailPage() {
+    const { id } = useParams();
+    const router = useRouter();
+    const { program, dao, loading: daoLoading } = useDao();
+    const { handleTx } = useTx();
+    const { publicKey } = useWallet();
 
-    const proposalId = parseInt(id);
-    const [proposalPDA] = getProposalPDA(proposalId);
-    const [marketPDA] = getMarketPDA(proposalPDA);
-
-    const { market, loading: marketLoading } = useMarket(marketPDA);
-    const { position } = usePosition(marketPDA);
-
+    const proposalId = useMemo(() => new BN(id as string), [id]);
     const [proposal, setProposal] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [actionLoading, setActionLoading] = useState(false);
 
-    // Fetch proposal
-    useState(() => {
-        async function fetchProposal() {
-            if (!wallet.publicKey) {
-                setLoading(false);
-                return;
-            }
+    const proposalPda = useMemo(() => getProposalPDA(proposalId.toNumber())[0], [proposalId]);
+    const marketPda = useMemo(() => getMarketPDA(proposalPda)[0], [proposalPda]);
 
-            try {
-                const program = getProgram(connection, wallet as any);
-                const proposalAccount = await (program.account as any).proposal.fetch(proposalPDA);
+    const { market, loading: marketLoading, refresh: refreshMarket } = useMarket(marketPda);
+    const { position, loading: positionLoading, refresh: refreshPosition } = usePosition(marketPda);
 
-                setProposal({
-                    id: Number(proposalAccount.id),
-                    creator: proposalAccount.creator,
-                    description: proposalAccount.description,
-                    market: proposalAccount.market,
-                    executed: proposalAccount.executed,
-                });
-            } catch (err: any) {
-                console.error('Error fetching proposal:', err);
-                setError(err.message || 'Failed to fetch proposal');
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        fetchProposal();
-    });
-
-    const isAdmin = dao && wallet.publicKey && dao.admin.equals(wallet.publicKey);
-    const now = Math.floor(Date.now() / 1000);
-    const isMarketClosed = market ? market.resolved || market.closesAt < now : true;
-    const canRedeem = market?.resolved && position && !position.redeemed;
-
-    const handleResolveMarket = async (outcomeYes: boolean) => {
-        if (!wallet.publicKey || !wallet.signTransaction) return;
-
+    const fetchProposal = async () => {
+        if (!program) return;
         try {
-            setActionLoading(true);
-            setError(null);
-
-            const program = getProgram(connection, wallet as any);
-
-            const tx = await program.methods
-                .resolveMarket(outcomeYes)
-                .accounts({
-                    market: marketPDA,
-                    resolver: wallet.publicKey,
-                })
-                .rpc();
-
-            console.log('Market resolved:', tx);
-            window.location.reload();
-        } catch (err: any) {
-            console.error('Error resolving market:', err);
-            setError(err.message || 'Failed to resolve market');
+            const data = await (program.account as any).proposal.fetch(proposalPda);
+            setProposal(data);
+        } catch (err) {
+            console.error('Error fetching proposal:', err);
         } finally {
-            setActionLoading(false);
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchProposal();
+    }, [program, proposalPda]);
+
+    const handleResolve = async (outcomeYes: boolean) => {
+        if (!program || !publicKey) return;
+        try {
+            const tx = (program.methods as any).resolveMarket(outcomeYes).accounts({
+                market: marketPda,
+                resolver: publicKey,
+            }).rpc();
+            const { error } = await handleTx(tx, 'Resolving market...', `Market resolved to ${outcomeYes ? 'YES' : 'NO'}`);
+            if (!error) {
+                refreshMarket();
+                fetchProposal();
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleExecute = async () => {
+        if (!program || !dao || !publicKey) return;
+        try {
+            const [daoPda] = getDaoPDA();
+            const [treasuryPda] = getTreasuryPDA();
+
+            const tx = (program.methods as any).executeProposal(new BN(0), new BN(0)).accounts({
+                dao: daoPda,
+                proposal: proposalPda,
+                treasury: treasuryPda,
+                treasuryTokenAccount: publicKey,
+                recipientTokenAccount: publicKey,
+                admin: publicKey,
+            }).rpc();
+
+            const { error } = await handleTx(tx, 'Executing proposal...', 'Proposal instructions executed');
+            if (!error) {
+                fetchProposal();
+            }
+        } catch (err) {
+            console.error(err);
         }
     };
 
     const handleRedeem = async () => {
-        if (!wallet.publicKey || !wallet.signTransaction || !position) return;
-
+        if (!program || !publicKey) return;
         try {
-            setActionLoading(true);
-            setError(null);
+            const [pda] = getPositionPDA(marketPda, publicKey);
+            const tx = (program.methods as any).redeem().accounts({
+                market: marketPda,
+                position: pda,
+                bettor: publicKey,
+            }).rpc();
 
-            const program = getProgram(connection, wallet as any);
-            const [positionPDA] = getPositionPDA(marketPDA, wallet.publicKey);
-
-            const tx = await program.methods
-                .redeem()
-                .accounts({
-                    market: marketPDA,
-                    position: positionPDA,
-                    bettor: wallet.publicKey,
-                })
-                .rpc();
-
-            console.log('Redeemed:', tx);
-            window.location.reload();
-        } catch (err: any) {
-            console.error('Error redeeming:', err);
-            setError(err.message || 'Failed to redeem');
-        } finally {
-            setActionLoading(false);
+            const { error } = await handleTx(tx, 'Redeeming rewards...', 'Rewards successfully claimed');
+            if (!error) {
+                refreshPosition();
+                refreshMarket();
+            }
+        } catch (err) {
+            console.error(err);
         }
     };
 
-    const handleExecuteProposal = async () => {
-        if (!wallet.publicKey || !wallet.signTransaction) return;
-
-        const solAmount = prompt('Enter SOL amount to transfer (in lamports):');
-        const tokenAmount = prompt('Enter token amount to transfer:');
-
-        if (!solAmount || !tokenAmount) return;
-
-        try {
-            setActionLoading(true);
-            setError(null);
-
-            const program = getProgram(connection, wallet as any);
-            const [treasuryPDA] = getTreasuryPDA();
-
-            // You would need to provide actual token account addresses
-            const treasuryTokenAccount = new PublicKey('11111111111111111111111111111111'); // Replace
-            const recipientTokenAccount = new PublicKey('11111111111111111111111111111111'); // Replace
-
-            const tx = await program.methods
-                .executeProposal(BigInt(solAmount), BigInt(tokenAmount))
-                .accounts({
-                    dao: dao!.admin, // This should be DAO PDA
-                    proposal: proposalPDA,
-                    treasury: treasuryPDA,
-                    treasuryTokenAccount,
-                    recipientTokenAccount,
-                    tokenProgram: TOKEN_PROGRAM_ID,
-                    admin: wallet.publicKey,
-                    systemProgram: SystemProgram.programId,
-                })
-                .rpc();
-
-            console.log('Proposal executed:', tx);
-            window.location.reload();
-        } catch (err: any) {
-            console.error('Error executing proposal:', err);
-            setError(err.message || 'Failed to execute proposal');
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    if (!wallet.publicKey) {
+    if (loading || daoLoading || marketLoading) {
         return (
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <div className="text-center py-20">
-                    <p className="text-slate-500">Connect your wallet to view proposal details</p>
-                </div>
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+                <div className="w-12 h-12 rounded-full border-4 border-slate-100 border-t-blue-600 animate-spin" />
+                <p className="text-slate-400 font-bold text-sm uppercase tracking-widest animate-pulse">Fetching Proposal</p>
             </div>
         );
     }
 
-    if (loading || marketLoading) {
+    if (!proposal || !market) {
         return (
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <div className="text-center py-20">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-                    <p className="text-slate-500 mt-4">Loading proposal...</p>
+            <div className="max-w-xl mx-auto mt-20 p-12 rounded-[2.5rem] bg-white border border-slate-200 shadow-2xl text-center">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <Target className="w-8 h-8 text-slate-300" />
                 </div>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Proposal Not Found</h2>
+                <p className="text-slate-500 mb-8 leading-relaxed font-medium">This record doesn't exist on-chain or might belong to a different DAO context.</p>
+                <Link href="/" className="inline-flex items-center gap-2 text-blue-600 font-bold hover:underline">
+                    <ArrowLeft size={16} /> Return Home
+                </Link>
             </div>
         );
     }
 
-    if (!proposal) {
-        return (
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <div className="text-center py-20">
-                    <p className="text-slate-500">Proposal not found</p>
-                    <Link href="/" className="text-blue-600 hover:text-blue-500 mt-4 inline-block">
-                        Back to Dashboard
-                    </Link>
-                </div>
-            </div>
-        );
-    }
+    const isAdmin = publicKey?.toBase58() === dao?.admin?.toBase58();
+    const yesPool = market.yesPool.toNumber();
+    const noPool = market.noPool.toNumber();
+    const totalPool = yesPool + noPool;
+    const yesPrice = totalPool > 0 ? yesPool / totalPool : 0.5;
+    const noPrice = totalPool > 0 ? noPool / totalPool : 0.5;
 
     return (
-        <div className="flex flex-col items-center w-full min-h-screen">
-            <div className="max-w-4xl w-full px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-                {/* Back Button */}
-                <Link href="/" className="group inline-flex items-center text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors">
-                    <span className="mr-2 transition-transform group-hover:-translate-x-1">←</span> Back to Dashboard
-                </Link>
+        <div className="max-w-4xl mx-auto px-6 py-16">
+            <Link href="/" className="inline-flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-colors mb-10 group font-bold text-xs uppercase tracking-widest">
+                <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+                <span>Go Back</span>
+            </Link>
 
-                {/* Proposal Header */}
-                <div className="space-y-6 pb-8 border-b border-slate-200/60">
-                    <div className="flex justify-between items-start">
-                        <div className="space-y-4 max-w-2xl">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                {/* Main Content */}
+                <div className="lg:col-span-2 space-y-10">
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3">
+                            <span className="px-2.5 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-lg border border-slate-200 uppercase tracking-widest font-mono">
+                                PROPOSAL #{proposal.id.toString()}
+                            </span>
+                            {proposal.executed ? (
+                                <span className="flex items-center gap-1.5 text-[10px] border border-emerald-100 bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider">
+                                    <CheckCircle2 size={12} /> Executed
+                                </span>
+                            ) : market.resolved ? (
+                                <span className="flex items-center gap-1.5 text-[10px] border border-slate-100 bg-slate-50 text-slate-500 px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider">
+                                    <CheckCircle2 size={12} /> Resolved
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-1.5 text-[10px] border border-blue-100 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider">
+                                    <Clock size={12} className="animate-pulse" /> Active
+                                </span>
+                            )}
+                        </div>
+                        <h1 className="text-4xl md:text-5xl font-black text-slate-900 leading-[1.15] tracking-tight">
+                            {proposal.description}
+                        </h1>
+                    </div>
+
+                    {/* Market Sentiment Card */}
+                    <div className="p-8 bg-white border border-slate-200 rounded-[2rem] shadow-xl shadow-slate-200/40 space-y-8">
+                        <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-mono text-slate-400 px-2 py-0.5 border border-slate-200 rounded">ID-{proposal.id}</span>
-                                {proposal.executed && (
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                        Executed
-                                    </span>
-                                )}
+                                <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                                    <TrendingUp size={20} />
+                                </div>
+                                <span className="text-sm font-bold text-slate-900 uppercase tracking-wider">On-chain Market Data</span>
                             </div>
-                            <h1 className="text-4xl font-bold text-slate-900 leading-tight font-outfit">{proposal.description}</h1>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                                Total Pool: {((yesPool + noPool) / 1e9).toFixed(2)} SOL
+                            </div>
+                        </div>
+
+                        <PriceBar yesPrice={yesPrice} noPrice={noPrice} />
+
+                        <div className="grid grid-cols-2 gap-5 pt-2">
+                            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100/10">
+                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 font-mono">Yes Volume</div>
+                                <div className="text-2xl font-black text-slate-900">{(yesPool / 1e9).toFixed(2)} <span className="text-xs text-slate-400 font-bold">SOL</span></div>
+                            </div>
+                            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100/10">
+                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 font-mono">No Volume</div>
+                                <div className="text-2xl font-black text-slate-900">{(noPool / 1e9).toFixed(2)} <span className="text-xs text-slate-400 font-bold">SOL</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Admin Actions */}
+                    {isAdmin && !market.resolved && (
+                        <div className="p-8 bg-blue-50/50 border border-blue-100 rounded-[2rem] space-y-5">
+                            <div className="flex items-center gap-3 text-blue-800">
+                                <Shield size={22} strokeWidth={2.5} />
+                                <span className="text-sm font-black uppercase tracking-widest">Protocol Resolution</span>
+                            </div>
+                            <p className="text-slate-600 text-[13px] font-medium leading-relaxed">
+                                As the designated administrator, you are responsible for resolving this market based on external outcomes.
+                                Accurate resolution is critical for protocol integrity.
+                            </p>
+                            <div className="flex gap-4 pt-2">
+                                <button
+                                    onClick={() => handleResolve(true)}
+                                    className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-black transition-all shadow-lg active:scale-95"
+                                >
+                                    Resolve YES
+                                </button>
+                                <button
+                                    onClick={() => handleResolve(false)}
+                                    className="flex-1 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-sm font-black transition-all shadow-lg active:scale-95"
+                                >
+                                    Resolve NO
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {isAdmin && market.resolved && !proposal.executed && market.outcomeYes && (
+                        <div className="p-8 bg-indigo-50/50 border border-indigo-100 rounded-[2rem] space-y-5">
+                            <div className="flex items-center gap-3 text-indigo-800">
+                                <Landmark size={22} strokeWidth={2.5} />
+                                <span className="text-sm font-black uppercase tracking-widest">Execute Intent</span>
+                            </div>
+                            <p className="text-slate-600 text-[13px] font-medium leading-relaxed">
+                                The predictive market has finalized to YES. The proposed on-chain instructions are ready for execution.
+                            </p>
+                            <button
+                                onClick={handleExecute}
+                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-sm font-black transition-all shadow-lg active:scale-95"
+                            >
+                                Trigger On-Chain Action
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Sidebar */}
+                <div className="space-y-8">
+                    <BuyPanel
+                        program={program}
+                        marketPda={marketPda}
+                        onSuccess={() => { refreshMarket(); refreshPosition(); }}
+                        disabled={market.resolved}
+                    />
+
+                    {/* User Position */}
+                    {position && (
+                        <div className="p-8 bg-white border border-slate-200 rounded-[2rem] shadow-xl shadow-slate-200/30 space-y-6">
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Your Stake</span>
+                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${position.isYes ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                                    {position.isYes ? 'YES Position' : 'NO Position'}
+                                </span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-4xl font-black text-slate-900">
+                                    {(position.amount.toNumber() / 1e9).toFixed(2)}
+                                </span>
+                                <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">SOL Deposited</span>
+                            </div>
+
+                            {market.resolved && !position.redeemed && (
+                                <button
+                                    onClick={handleRedeem}
+                                    className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-2xl transition-all shadow-xl active:scale-95"
+                                >
+                                    Claim Payout
+                                </button>
+                            )}
+
+                            {position.redeemed && (
+                                <div className="flex items-center justify-center gap-2 text-slate-400 text-xs font-bold uppercase py-3 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <CheckCircle2 size={14} className="text-emerald-500" />
+                                    <span>Rewards Claimed</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="p-8 bg-slate-50 border border-slate-200 rounded-[2rem] space-y-5">
+                        <div className="flex items-center gap-2 text-slate-400">
+                            <Info size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Market Stats</span>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center group">
+                                <span className="text-xs font-bold text-slate-500 group-hover:text-slate-900 transition-colors">Deadline</span>
+                                <span className="text-xs font-black text-slate-900 font-mono">{new Date(market.closesAt.toNumber() * 1000).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center group">
+                                <span className="text-xs font-bold text-slate-500 group-hover:text-slate-900 transition-colors">Protocol Fee</span>
+                                <span className="text-xs font-black text-slate-900 font-mono">{(market.feePool.toNumber() / 1e9).toFixed(4)} SOL</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                {/* Error Message */}
-                {error && (
-                    <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 font-medium text-sm">
-                        {error}
-                    </div>
-                )}
-
-                {market ? (
-                    <div className="space-y-12">
-                        {/* Stats Grid */}
-                        <StatsGrid
-                            yesPool={market.yesPool}
-                            noPool={market.noPool}
-                            feePool={market.feePool}
-                            closesAt={market.closesAt}
-                            resolved={market.resolved}
-                        />
-
-                        {/* Price Bar & Buy Panel Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-                            <div className="md:col-span-1 space-y-6">
-                                <div className="premium-card rounded-2xl p-6 space-y-4">
-                                    <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Market Consensus</h3>
-                                    <div className="py-2">
-                                        <PriceBar yesPool={market.yesPool} noPool={market.noPool} />
-                                    </div>
-                                </div>
-
-                                {/* Position Info */}
-                                {position && (
-                                    <div className="premium-card rounded-2xl p-6 space-y-4 bg-slate-50/50">
-                                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Your Position</h3>
-                                        <div className="flex justify-between items-end">
-                                            <div className="space-y-1">
-                                                <div className="text-[10px] uppercase font-bold text-slate-400">Side</div>
-                                                <div className={`text-xl font-bold font-outfit ${position.isYes ? 'text-blue-600' : 'text-rose-600'}`}>
-                                                    {position.isYes ? 'YES' : 'NO'}
-                                                </div>
-                                            </div>
-                                            <div className="text-right space-y-1">
-                                                <div className="text-[10px] uppercase font-bold text-slate-400">Amount</div>
-                                                <div className="text-xl font-bold text-slate-900 font-outfit">
-                                                    {(position.amount / LAMPORTS_PER_SOL).toFixed(3)} <span className="text-sm">SOL</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {canRedeem && !position.redeemed && (
-                                            <button
-                                                onClick={handleRedeem}
-                                                disabled={actionLoading}
-                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20 text-xs uppercase tracking-widest"
-                                            >
-                                                {actionLoading ? 'Redeeming...' : 'Redeem Winnings'}
-                                            </button>
-                                        )}
-
-                                        {position.redeemed && (
-                                            <div className="text-center py-2 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                Reward Claimed
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="md:col-span-2">
-                                {/* Buy Panel */}
-                                {!market.resolved && (
-                                    <BuyPanel
-                                        proposalPubkey={proposalPDA}
-                                        marketPubkey={marketPDA}
-                                        yesPool={market.yesPool}
-                                        noPool={market.noPool}
-                                        isMarketClosed={isMarketClosed}
-                                        onSuccess={() => window.location.reload()}
-                                    />
-                                )}
-                                {market.resolved && (
-                                    <div className="premium-card rounded-3xl p-12 text-center space-y-4 grayscale border-dashed">
-                                        <div className="text-4xl">🏁</div>
-                                        <h3 className="text-xl font-bold text-slate-900 font-outfit">This market has concluded</h3>
-                                        <p className="text-slate-500 text-sm max-w-xs mx-auto">
-                                            Trading is disabled for resolved proposals. If you had a winning position, you can redeem your funds.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Admin Actions */}
-                        {isAdmin && (
-                            <div className="premium-card bg-amber-50/30 border-amber-100 rounded-3xl p-8 space-y-6">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                    <h3 className="text-xs font-bold uppercase tracking-widest text-amber-700">Protocol Administration</h3>
-                                </div>
-
-                                {!market.resolved && isMarketClosed && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button
-                                            onClick={() => handleResolveMarket(true)}
-                                            disabled={actionLoading}
-                                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl transition-all disabled:opacity-30 text-xs uppercase tracking-widest"
-                                        >
-                                            Resolve YES
-                                        </button>
-                                        <button
-                                            onClick={() => handleResolveMarket(false)}
-                                            disabled={actionLoading}
-                                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl transition-all disabled:opacity-30 text-xs uppercase tracking-widest"
-                                        >
-                                            Resolve NO
-                                        </button>
-                                    </div>
-                                )}
-
-                                {market.resolved && !proposal.executed && (
-                                    <button
-                                        onClick={handleExecuteProposal}
-                                        disabled={actionLoading}
-                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 text-xs uppercase tracking-widest"
-                                    >
-                                        {actionLoading ? 'Executing Protocol Transfer...' : 'Execute Approved Proposal'}
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="premium-card rounded-3xl p-20 text-center space-y-4 border-dashed">
-                        <div className="text-4xl grayscale opacity-40">⏳</div>
-                        <p className="text-slate-500 font-medium">No market opened for this proposal</p>
-                    </div>
-                )}
             </div>
+
+            <footer className="mt-32 pt-12 border-t border-slate-200 text-center">
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em]">
+                    MiniMetaDAO Protocol &copy; 2026
+                </p>
+            </footer>
         </div>
     );
 }

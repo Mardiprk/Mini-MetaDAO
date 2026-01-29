@@ -1,57 +1,38 @@
-'use client';
-
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useState } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { useEffect, useState, useMemo } from 'react';
+import { useConnection, useAnchorWallet } from '@solana/wallet-adapter-react';
 import { getProgram } from '@/lib/anchor';
-import { Market } from '@/lib/types';
+import { PublicKey } from '@solana/web3.js';
 
-export function useMarket(marketPubkey: PublicKey | null) {
+export function useMarket(marketPda?: PublicKey) {
     const { connection } = useConnection();
-    const wallet = useWallet();
-    const [market, setMarket] = useState<Market | null>(null);
+    const wallet = useAnchorWallet();
+    const [market, setMarket] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+
+    const program = useMemo(() => {
+        if (!wallet) return null;
+        return getProgram(connection, wallet);
+    }, [connection, wallet]);
+
+    const fetchMarket = async () => {
+        if (!program || !marketPda) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        try {
+            const marketAccount = await (program.account as any).market.fetch(marketPda);
+            setMarket(marketAccount);
+        } catch (err) {
+            console.error('Error fetching market:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        async function fetchMarket() {
-            try {
-                setLoading(true);
-                setError(null);
-
-                if (!wallet.publicKey || !marketPubkey) {
-                    setMarket(null);
-                    setLoading(false);
-                    return;
-                }
-
-                const program = getProgram(connection, wallet as any);
-                const marketAccount = await (program.account as any).market.fetch(marketPubkey);
-
-                setMarket({
-                    proposal: marketAccount.proposal,
-                    yesPool: Number(marketAccount.yesPool),
-                    noPool: Number(marketAccount.noPool),
-                    feePool: Number(marketAccount.feePool),
-                    closesAt: Number(marketAccount.closesAt),
-                    resolved: marketAccount.resolved,
-                    outcomeYes: marketAccount.outcomeYes,
-                });
-            } catch (err: any) {
-                if (err.message?.includes('Account does not exist')) {
-                    console.log('Market account not found');
-                } else {
-                    console.error('Error fetching market:', err);
-                    setError(err.message || 'Failed to fetch market');
-                }
-                setMarket(null);
-            } finally {
-                setLoading(false);
-            }
-        }
-
         fetchMarket();
-    }, [connection, wallet.publicKey, marketPubkey?.toString()]);
+    }, [program, marketPda?.toBase58()]);
 
-    return { market, loading, error, refetch: () => { } };
+    return { market, loading, refresh: fetchMarket };
 }

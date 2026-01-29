@@ -1,189 +1,131 @@
 'use client';
 
-import { useState } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { getProgram } from '../lib/anchor';
-import { getMarketPDA, getPositionPDA } from '../lib/pdas';
+import { useState, useEffect } from 'react';
+import { useTx } from '@/hooks/useTx';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { BN } from '@coral-xyz/anchor';
+import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { Loader2, ArrowRight, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { getPositionPDA } from '@/lib/pdas';
 
 interface BuyPanelProps {
-    proposalPubkey: PublicKey;
-    marketPubkey: PublicKey;
-    yesPool: number;
-    noPool: number;
-    isMarketClosed: boolean;
+    program: any;
+    marketPda: PublicKey;
     onSuccess: () => void;
+    disabled?: boolean;
 }
 
-export default function BuyPanel({
-    proposalPubkey,
-    marketPubkey,
-    yesPool,
-    noPool,
-    isMarketClosed,
-    onSuccess
-}: BuyPanelProps) {
+export default function BuyPanel({ program, marketPda, onSuccess, disabled }: BuyPanelProps) {
+    const { handleTx } = useTx();
+    const { publicKey } = useWallet();
     const { connection } = useConnection();
-    const wallet = useWallet();
+
     const [amount, setAmount] = useState('');
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [balance, setBalance] = useState<number | null>(null);
 
-    const amountLamports = amount ? parseFloat(amount) * LAMPORTS_PER_SOL : 0;
-
-    // Calculate estimated payout (simplified - 2% fee)
-    const estimatedPayout = amountLamports * 0.98;
+    useEffect(() => {
+        if (publicKey) {
+            connection.getBalance(publicKey).then(val => setBalance(val / LAMPORTS_PER_SOL));
+        }
+    }, [publicKey, connection]);
 
     const handleBuy = async (isYes: boolean) => {
-        if (!wallet.publicKey || !wallet.signTransaction) {
-            setError('Please connect your wallet');
-            return;
-        }
+        if (!program || !amount || parseFloat(amount) <= 0 || !publicKey) return;
 
-        if (!amount || parseFloat(amount) <= 0) {
-            setError('Please enter a valid amount');
-            return;
-        }
-
+        setLoading(true);
         try {
-            setLoading(true);
-            setError(null);
-
-            const program = getProgram(connection, wallet as any);
-            const [positionPDA] = getPositionPDA(marketPubkey, wallet.publicKey);
-
+            const lamports = new BN(Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL));
             const tx = isYes
-                ? await program.methods
-                    .buyYes(BigInt(amountLamports))
-                    .accounts({
-                        market: marketPubkey,
-                        position: positionPDA,
-                        bettor: wallet.publicKey,
-                        systemProgram: SystemProgram.programId,
-                    })
-                    .rpc()
-                : await program.methods
-                    .buyNo(BigInt(amountLamports))
-                    .accounts({
-                        market: marketPubkey,
-                        position: positionPDA,
-                        bettor: wallet.publicKey,
-                        systemProgram: SystemProgram.programId,
-                    })
-                    .rpc();
+                ? (program.methods as any).buyYes(lamports).rpc()
+                : (program.methods as any).buyNo(lamports).rpc();
 
-            console.log('Transaction signature:', tx);
-            setAmount('');
-            onSuccess();
-        } catch (err: any) {
-            console.error('Error buying:', err);
-            setError(err.message || 'Transaction failed');
+            const { error } = await handleTx(
+                tx,
+                `Buying ${isYes ? 'YES' : 'NO'}...`,
+                `Successfully bought ${amount} SOL of ${isYes ? 'YES' : 'NO'}`
+            );
+
+            if (!error) {
+                setAmount('');
+                onSuccess();
+                const newBalance = await connection.getBalance(publicKey);
+                setBalance(newBalance / LAMPORTS_PER_SOL);
+            }
+        } catch (err) {
+            console.error(err);
         } finally {
             setLoading(false);
         }
     };
 
-    const setMaxAmount = async () => {
-        if (!wallet.publicKey) return;
-
-        try {
-            const balance = await connection.getBalance(wallet.publicKey);
-            // Leave 0.01 SOL for fees
-            const maxAmount = Math.max(0, (balance - 0.01 * LAMPORTS_PER_SOL) / LAMPORTS_PER_SOL);
-            setAmount(maxAmount.toFixed(4));
-        } catch (err) {
-            console.error('Error getting balance:', err);
-        }
-    };
+    const isInvalid = !amount || parseFloat(amount) <= 0 || (balance !== null && parseFloat(amount) > balance);
 
     return (
-        <div className="premium-card rounded-3xl p-8 space-y-8">
-            <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-slate-900 font-outfit">Execute Trade</h3>
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Live Market</span>
-                </div>
-            </div>
-
-            {/* Amount Input */}
-            <div className="space-y-3">
-                <div className="flex justify-between items-center ml-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Investment Amount</label>
-                    {wallet.publicKey && (
-                        <button
-                            onClick={setMaxAmount}
-                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-widest"
-                        >
-                            Use Max Balance
-                        </button>
-                    )}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
+            <div className="space-y-2.5">
+                <div className="flex justify-between items-center px-1">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Amount to Trade</span>
+                    <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                        <Wallet size={12} className="text-blue-500" />
+                        {balance !== null ? `${balance.toFixed(4)} SOL` : 'Loading...'}
+                    </span>
                 </div>
                 <div className="relative group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-slate-400 font-bold">SOL</div>
                     <input
                         type="number"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="0.00"
-                        disabled={isMarketClosed || loading}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-14 pr-4 py-6 text-2xl font-bold font-outfit text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500/40 transition-all disabled:opacity-50"
-                        step="0.001"
+                        step="0.1"
                         min="0"
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 pr-20 text-2xl font-bold text-slate-900 focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all placeholder:text-slate-200"
+                        disabled={loading || disabled}
                     />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <span className="text-slate-400 font-bold text-sm">SOL</span>
+                        <button
+                            onClick={() => balance && setAmount((balance * 0.95).toFixed(4))}
+                            className="bg-white hover:bg-slate-50 text-[10px] font-bold text-blue-600 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
+                        >
+                            MAX
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Market Info / Estimated Payout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col justify-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fee (2%)</span>
-                    <span className="text-sm font-bold text-slate-600 font-outfit">{(amountLamports * 0.02 / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
-                </div>
-                <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 flex flex-col justify-center">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Estimated Shares</span>
-                    <span className="text-xl font-bold text-blue-600 font-outfit">
-                        {amount ? (estimatedPayout / LAMPORTS_PER_SOL).toFixed(4) : "0.0000"}
-                    </span>
-                </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-                <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-medium">
-                    {error}
-                </div>
-            )}
-
-            {/* Buy Buttons */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3">
                 <button
                     onClick={() => handleBuy(true)}
-                    disabled={isMarketClosed || loading || !wallet.publicKey}
-                    className="group relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-5 rounded-2xl transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-30 disabled:shadow-none"
+                    disabled={loading || disabled || isInvalid}
+                    className="relative group bg-emerald-50 hover:bg-emerald-600 border border-emerald-100 hover:border-emerald-600 rounded-2xl py-4 transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden"
                 >
-                    <span className="relative z-10 text-sm uppercase tracking-widest">{loading ? 'Processing...' : 'Speculate YES'}</span>
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="relative z-10 flex flex-col items-center gap-0.5">
+                        <span className="text-emerald-700 group-hover:text-white font-bold text-lg uppercase tracking-wider flex items-center gap-2 transition-colors">
+                            <TrendingUp size={20} /> Buy YES
+                        </span>
+                        <span className="text-[10px] text-emerald-600/80 group-hover:text-emerald-100 font-bold uppercase transition-colors">Bullish on Proposal</span>
+                    </div>
                 </button>
+
                 <button
                     onClick={() => handleBuy(false)}
-                    disabled={isMarketClosed || loading || !wallet.publicKey}
-                    className="group relative overflow-hidden bg-rose-600 hover:bg-rose-700 text-white font-bold py-5 rounded-2xl transition-all shadow-xl shadow-rose-500/20 disabled:opacity-30 disabled:shadow-none"
+                    disabled={loading || disabled || isInvalid}
+                    className="relative group bg-rose-50 hover:bg-rose-600 border border-rose-100 hover:border-rose-600 rounded-2xl py-4 transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden"
                 >
-                    <span className="relative z-10 text-sm uppercase tracking-widest">{loading ? 'Processing...' : 'Speculate NO'}</span>
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="relative z-10 flex flex-col items-center gap-0.5">
+                        <span className="text-rose-700 group-hover:text-white font-bold text-lg uppercase tracking-wider flex items-center gap-2 transition-colors">
+                            <TrendingDown size={20} /> Buy NO
+                        </span>
+                        <span className="text-[10px] text-rose-600/80 group-hover:text-rose-100 font-bold uppercase transition-colors">Bearish on Proposal</span>
+                    </div>
                 </button>
             </div>
 
-            {isMarketClosed && (
-                <div className="text-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Market is closed for trading</span>
-                </div>
-            )}
-
-            {!wallet.publicKey && (
-                <div className="text-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Authentication Required to Trade</span>
+            {loading && (
+                <div className="flex items-center justify-center gap-3 text-slate-400 text-sm font-semibold animate-pulse py-2">
+                    <Loader2 size={18} className="animate-spin text-blue-500" />
+                    <span>Transaction in progress...</span>
                 </div>
             )}
         </div>

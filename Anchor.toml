@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-mini_meta_dao = "BvRfHqJ1cMg8EFcKj7A3qNxJhbmD8okDzF8LQintszR9"
+mini_meta_dao = "BRrZTP9GnkFpGfbXjeG754X2NdKZN4h2rkfgtX9kPMWV"
 
 [registry]
 url = "https://api.apr.dev"

@@ -8,7 +8,7 @@ pub mod utils;
 
 pub use instructions::*;
 
-declare_id!("BvRfHqJ1cMg8EFcKj7A3qNxJhbmD8okDzF8LQintszR9");
+declare_id!("BRrZTP9GnkFpGfbXjeG754X2NdKZN4h2rkfgtX9kPMWV");
 
 #[program]
 pub mod mini_meta_dao {
@@ -57,7 +57,7 @@ pub mod mini_meta_dao {
         instructions::redeem(ctx)
     }
 
-    pub fn execute_proposal(ctx: Context<ExecuteProposal>, amount: u64) -> Result<()> {
-        instructions::execute_proposal(ctx, amount)
+    pub fn execute_proposal(ctx: Context<ExecuteProposal>, sol_amount: u64, token_amount: u64) -> Result<()> {
+        instructions::execute_proposal(ctx, sol_amount, token_amount)
     }
 }

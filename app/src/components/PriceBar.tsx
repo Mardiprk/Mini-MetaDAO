@@ -1,42 +1,32 @@
 'use client';
 
 interface PriceBarProps {
-    yesPool: number;
-    noPool: number;
+    yesPrice: number;
+    noPrice: number;
 }
 
-export default function PriceBar({ yesPool, noPool }: PriceBarProps) {
-    const total = yesPool + noPool;
-    const yesPercent = total > 0 ? (yesPool / total) * 100 : 50;
-    const noPercent = total > 0 ? (noPool / total) * 100 : 50;
+export default function PriceBar({ yesPrice, noPrice }: PriceBarProps) {
+    const yesPercent = yesPrice * 100;
 
     return (
-        <div className="space-y-4">
-            <div className="flex justify-between items-end">
-                <div className="space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-tighter text-slate-400">YES</div>
-                    <div className="text-2xl font-bold text-slate-900 font-outfit">{yesPercent.toFixed(1)}%</div>
-                </div>
-                <div className="space-y-1 text-right">
-                    <div className="text-[10px] font-bold uppercase tracking-tighter text-slate-400">NO</div>
-                    <div className="text-2xl font-bold text-slate-900 font-outfit">{noPercent.toFixed(1)}%</div>
-                </div>
+        <div className="w-full space-y-2.5">
+            <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
+                <span className="text-emerald-600">YES {yesPercent.toFixed(0)}%</span>
+                <span className="text-rose-600">NO {(100 - yesPercent).toFixed(0)}%</span>
             </div>
-
-            <div className="relative h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+            <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex border border-slate-200 shadow-inner">
                 <div
-                    className="h-full bg-emerald-500 transition-all duration-700 ease-out"
+                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-1000 ease-out"
                     style={{ width: `${yesPercent}%` }}
                 />
                 <div
-                    className="h-full bg-rose-500 transition-all duration-700 ease-out"
-                    style={{ width: `${noPercent}%` }}
+                    className="h-full bg-gradient-to-r from-rose-500 to-rose-400 transition-all duration-1000 ease-out"
+                    style={{ width: `${100 - yesPercent}%` }}
                 />
             </div>
-
-            <div className="flex justify-between text-[10px] font-mono text-slate-400 uppercase tracking-widest">
-                <span>{(yesPool / 1e9).toFixed(3)} SOL</span>
-                <span>{(noPool / 1e9).toFixed(3)} SOL</span>
+            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] font-mono">
+                <span>{yesPrice.toFixed(2)} SOL</span>
+                <span>{noPrice.toFixed(2)} SOL</span>
             </div>
         </div>
     );

@@ -12,19 +12,25 @@ export default function Navbar() {
     }, []);
 
     return (
-        <nav className="sticky top-0 z-40 w-full border-b border-slate-200/60 bg-white/70 backdrop-blur-md">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-center">
-                <div className="flex justify-between items-center h-14 w-full">
+        <nav className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 flex justify-center">
+                <div className="flex justify-between items-center h-16 w-full">
                     <Link href="/" className="flex items-center space-x-3">
-                        <img src="/minimetadao.png" alt="Mini Meta DAO" className="w-8 h-8 rounded-lg shadow-sm" />
-                        <div className="text-xl font-medium tracking-tight text-slate-900 font-outfit">
+                        <div className="relative w-10 h-10 overflow-hidden rounded-xl border border-slate-200 shadow-sm transform hover:scale-105 transition-transform cursor-pointer">
+                            <img
+                                src="/minimetadao.png"
+                                alt="Mini Meta DAO Logo"
+                                className="w-full h-full object-cover"
+                            />
+                        </div>
+                        <div className="text-xl font-bold tracking-tight text-slate-900">
                             MiniMetaDAO
                         </div>
                     </Link>
 
                     <div className="flex items-center gap-4">
                         {mounted && (
-                            <WalletMultiButton className="!h-9 !px-4 !text-sm !transition-all hover:!opacity-90" />
+                            <WalletMultiButton className="wallet-adapter-button-trigger" />
                         )}
                     </div>
                 </div>

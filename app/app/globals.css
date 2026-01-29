@@ -3,13 +3,12 @@
 
 :root {
   --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  --foreground: 224 71.4% 4.1%;
   --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
+  --card-foreground: 224 71.4% 4.1%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
-  --primary: 207 100% 63%;
-  /* #41a9ff */
+  --popover-foreground: 224 71.4% 4.1%;
+  --primary: 221.2 83.2% 53.3%;
   --primary-foreground: 210 40% 98%;
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222.2 47.4% 11.2%;
@@ -25,11 +24,9 @@
   --radius: 0.75rem;
 }
 
-
-
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background-color: #fcfcfc;
+  background-color: #fafafa;
   color: #0f172a;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -44,7 +41,7 @@ h6 {
   font-family: 'Outfit', sans-serif;
 }
 
-/* Subtle grid background */
+/* Subtle background pattern */
 body::before {
   content: "";
   position: fixed;
@@ -52,93 +49,50 @@ body::before {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image:
-    radial-gradient(#e5e7eb 1px, transparent 1px);
-  background-size: 40px 40px;
-  background-position: -19px -19px;
-  opacity: 0.4;
+  background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -16px -16px;
+  opacity: 0.5;
   pointer-events: none;
   z-index: -1;
 }
 
-/* Base styles for cleaner UI */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+/* Wallet Button Overrides (Light Theme) */
+.wallet-adapter-button {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  height: 40px !important;
+  border-radius: 0.75rem !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.2s !important;
 }
 
+.wallet-adapter-button:not([disabled]):hover {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.wallet-adapter-button-trigger {
+  background-color: #2563eb !important;
+  color: white !important;
+  border: none !important;
+}
+
+/* Premium Card Style */
 .premium-card {
   background: white;
-  border: 1px solid #eef2f6;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .premium-card:hover {
-  border-color: #d1d9e2;
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
   transform: translateY(-2px);
-}
-
-/* Button refinements */
-.btn-primary {
-  background: #0f172a;
-  color: white;
-  font-weight: 500;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.75rem;
-  transition: all 0.2s;
-}
-
-.btn-primary:hover {
-  background: #1e293b;
-  transform: translateY(-1px);
-}
-
-/* Wallet Button Overrides to match theme */
-.wallet-adapter-button {
-  font-family: 'Inter', sans-serif !important;
-  font-weight: 500 !important;
-  font-size: 14px !important;
-  height: 40px !important;
-  border-radius: 9999px !important;
-  background-color: #0f172a !important;
-}
-
-.wallet-adapter-button-trigger {
-  background-color: #41a9ff !important;
-}
-
-/* Brand Utilities */
-.text-brand {
-  color: #41a9ff;
-}
-
-.bg-brand {
-  background-color: #41a9ff;
-}
-
-.border-brand {
-  border-color: #41a9ff;
-}
-
-.ring-brand {
-  --tw-ring-color: #41a9ff;
-}
-
-/* Override blue-600 with brand color effectively */
-.text-blue-600 {
-  color: #41a9ff !important;
-}
-
-.bg-blue-600 {
-  background-color: #41a9ff !important;
-}
-
-.border-blue-600 {
-  border-color: #41a9ff !important;
-}
-
-.shadow-blue-500\/20 {
-  --tw-shadow-color: rgba(65, 169, 255, 0.2) !important;
+  border-color: rgba(37, 99, 235, 0.1);
 }

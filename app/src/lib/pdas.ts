@@ -1,6 +1,7 @@
 import { PublicKey } from '@solana/web3.js';
+import BN from 'bn.js';
 
-export const PROGRAM_ID = new PublicKey('BvRfHqJ1cMg8EFcKj7A3qNxJhbmD8okDzF8LQintszR9');
+export const PROGRAM_ID = new PublicKey('BRrZTP9GnkFpGfbXjeG754X2NdKZN4h2rkfgtX9kPMWV');
 
 // PDA Seeds
 export const DAO_SEED = Buffer.from('dao');
@@ -25,12 +26,17 @@ export function getTreasuryPDA(): [PublicKey, number] {
 
 /**
  * Derive a Proposal PDA
- * @param proposalId - The proposal count/ID
+ * @param proposalId - The proposal count/ID (treated as u64)
  */
-export function getProposalPDA(proposalId: number): [PublicKey, number] {
-    const buffer = Buffer.alloc(8);
-    buffer.writeBigUInt64LE(BigInt(proposalId));
-    return PublicKey.findProgramAddressSync([PROPOSAL_SEED, buffer], PROGRAM_ID);
+export function getProposalPDA(proposalId: number | bigint | BN): [PublicKey, number] {
+    // Convert to BN and encode as little-endian 8-byte array (u64)
+    const bnValue = BN.isBN(proposalId) ? proposalId : new BN(proposalId.toString(), 10);
+    const buffer = bnValue.toArrayLike(Uint8Array, 'le', 8);
+
+    return PublicKey.findProgramAddressSync(
+        [PROPOSAL_SEED, buffer],
+        PROGRAM_ID
+    );
 }
 
 /**
@@ -38,7 +44,10 @@ export function getProposalPDA(proposalId: number): [PublicKey, number] {
  * @param proposalPubkey - The proposal's public key
  */
 export function getMarketPDA(proposalPubkey: PublicKey): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync([MARKET_SEED, proposalPubkey.toBuffer()], PROGRAM_ID);
+    return PublicKey.findProgramAddressSync(
+        [MARKET_SEED, proposalPubkey.toBuffer()],
+        PROGRAM_ID
+    );
 }
 
 /**
@@ -46,9 +55,16 @@ export function getMarketPDA(proposalPubkey: PublicKey): [PublicKey, number] {
  * @param marketPubkey - The market's public key
  * @param bettorPubkey - The bettor's public key
  */
-export function getPositionPDA(marketPubkey: PublicKey, bettorPubkey: PublicKey): [PublicKey, number] {
+export function getPositionPDA(
+    marketPubkey: PublicKey,
+    bettorPubkey: PublicKey
+): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
-        [POSITION_SEED, marketPubkey.toBuffer(), bettorPubkey.toBuffer()],
+        [
+            POSITION_SEED,
+            marketPubkey.toBuffer(),
+            bettorPubkey.toBuffer(),
+        ],
         PROGRAM_ID
     );
 }

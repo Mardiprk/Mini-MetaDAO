@@ -94,7 +94,7 @@ app/
 ## Environment
 
 - **Network**: Solana Devnet
-- **Program ID**: `BvRfHqJ1cMg8EFcKj7A3qNxJhbmD8okDzF8LQintszR9`
+- **Program ID**: `BRrZTP9GnkFpGfbXjeG754X2NdKZN4h2rkfgtX9kPMWV`
 - **RPC Endpoint**: `https://api.devnet.solana.com`
 
 ## Design
